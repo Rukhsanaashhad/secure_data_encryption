@@ -132,7 +132,7 @@ if choice == "Register":
         if not username or not passkey:
             st.error("Please fill all fields.")
         elif strength == "Weak":
-            st.error("Password is too weak. Please create a stronger password (at least 8 characters, including uppercase, lowercase, digit, and special character).")
+            st.error("Password is too weak. Please create a stronger password.")
         else:
             success = register_user(username, passkey)
             if success:
