@@ -2,6 +2,7 @@ import streamlit as st
 import hashlib
 import json
 import os
+import re
 from cryptography.fernet import Fernet
 
 # ----------------- Configuration -----------------
@@ -84,6 +85,23 @@ def retrieve_user_data(username, entry_id):
         return None
     return decrypt_data(encrypted_text)
 
+# 1. Password strength check function
+def check_password_strength(password):
+    criteria = {
+        "length": len(password) >= 8,
+        "uppercase": bool(re.search(r"[A-Z]", password)),
+        "lowercase": bool(re.search(r"[a-z]", password)),
+        "digits": bool(re.search(r"\d", password)),
+        "special": bool(re.search(r"[!@#$%^&*(),.?\":{}|<>]", password))
+    }
+    strength_score = sum(criteria.values())
+    if strength_score == 5:
+        return "Strong"
+    elif strength_score >= 3:
+        return "Medium"
+    else:
+        return "Weak"
+
 # ----------------- Streamlit UI -----------------
 st.set_page_config(page_title="Secure Data System", page_icon="🔒")
 st.title("🔒 Advanced Secure Data System")
@@ -95,7 +113,7 @@ if "user" not in st.session_state:
 menu = ["Register", "Login", "Store Data", "Retrieve Data", "Logout"]
 choice = st.sidebar.selectbox("Navigation", menu)
 
-# Handle "Logout" with a safe restart
+# Handle "Logout" 
 if choice == "Logout":
     st.session_state["user"] = None
     st.success("Logged out successfully.")
@@ -106,13 +124,21 @@ if choice == "Register":
     st.subheader("Register New User")
     username = st.text_input("Username")
     passkey = st.text_input("Create Password", type="password")
+    # Show password strength feedback
+    if passkey:
+        strength = check_password_strength(passkey)
+        st.write(f"Password strength: **{strength}**")
     if st.button("Register"):
         if username and passkey:
-            success = register_user(username, passkey)
-            if success:
-                st.success("Registration successful! Log in now.")
+            strength = check_password_strength(passkey)
+            if strength == "Weak":
+                st.error("Password is too weak. Please create a stronger password (at least 8 characters, including uppercase, lowercase, digit, and special character).")
             else:
-                st.error("Username already exists.")
+                success = register_user(username, passkey)
+                if success:
+                    st.success("Registration successful! Log in now.")
+                else:
+                    st.error("Username already exists.")
         else:
             st.error("Please fill all fields.")
 
