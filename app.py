@@ -172,9 +172,14 @@ if st.session_state["user"]:
             else:
                 st.error("All fields are required.")
 
-    elif choice == "Logout":
+   if st.session_state["user"]:
+     user = st.session_state["user"]
+    st.sidebar.write(f"Logged in as: **{user}**")
+    
+    # Add Logout Button
+    if st.button("Log Out"):
         st.session_state["user"] = None
-        st.sidebar.write("Logged out.")
+        st.experimental_rerun()
 
 else:
     st.info("Please log in or register to access data storage and retrieval.")
