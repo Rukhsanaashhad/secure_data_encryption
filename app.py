@@ -101,7 +101,7 @@ def retrieve_user_data(username, entry_id, passkey):
     return decrypted_text
 
 # ----------------- Streamlit UI -----------------
-
+st.set_page_config(page_title="Secure Data System", page_icon="🔒")
 st.title("🔒 Advanced Secure Data System")
 
 # Session State
