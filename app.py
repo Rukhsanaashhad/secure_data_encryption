@@ -7,7 +7,6 @@ from cryptography.fernet import Fernet
 # ----------------- Configuration -----------------
 DATA_FILE = "secure_data.json"
 KEY_FILE = "fernet_key.key"
-ADMIN_PASSWORD = "admin123"  # Should be stored securely
 
 # ----------------- Helper functions -----------------
 def load_or_create_key():
@@ -62,8 +61,7 @@ def authenticate_user(username, passkey):
     data = load_data()
     if username not in data:
         return False
-    user_hash = hash_passkey(passkey, username)
-    return user_hash == data[username]["passkey_hash"]
+    return hash_passkey(passkey, username) == data[username]["passkey_hash"]
 
 def store_user_data(username, data_text):
     data = load_data()
@@ -97,10 +95,11 @@ if "user" not in st.session_state:
 menu = ["Register", "Login", "Store Data", "Retrieve Data", "Logout"]
 choice = st.sidebar.selectbox("Navigation", menu)
 
-# Handle logout
+# Handle "Logout" with a safe restart
 if choice == "Logout":
     st.session_state["user"] = None
-    st.experimental_rerun()
+    st.success("Logged out successfully.")
+    st.stop()
 
 # Registration
 if choice == "Register":
@@ -129,7 +128,7 @@ elif choice == "Login":
         else:
             st.error("Invalid credentials.")
 
-# Actions for logged-in users
+# Logged-in actions
 if st.session_state["user"]:
     user = st.session_state["user"]
     st.sidebar.write(f"Logged in as: **{user}**")
