@@ -1,116 +1,180 @@
-# pip install streamlit sqlalchemy bcrypt cryptography
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import bcrypt
-from cryptography.fernet import Fernet
+import hashlib
+import json
 import os
+from cryptography.fernet import Fernet
 
-# Setup Database
-engine = create_engine('sqlite:///secure_data.db')
-Base = declarative_base()
-Session = sessionmaker(bind=engine)
-session = Session()
+# ----------------- Configuration -----------------
 
-# Models
-class User(Base):
-    __tablename__ = 'users'
-    id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True)
-    password_hash = Column(LargeBinary)
-    encryption_key = Column(LargeBinary)
+DATA_FILE = "secure_data.json"
+KEY_FILE = "fernet_key.key"
+ADMIN_PASSWORD = "admin123"  # Should be stored encrypted or in env variables
 
-class UserData(Base):
-    __tablename__ = 'userdata'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    encrypted_data = Column(LargeBinary)
+# ----------------- Helper functions -----------------
 
-Base.metadata.create_all(engine)
-
-# Hash password
-def hash_password(password):
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-
-# Verify password
-def verify_password(password, hashed):
-    return bcrypt.checkpw(password.encode(), hashed)
-
-# Generate encryption key
-def generate_key():
-    return Fernet.generate_key()
-
-# Encrypt/Decrypt data
-def encrypt_data(data, key):
-    return Fernet(key).encrypt(data.encode())
-
-def decrypt_data(token, key):
-    return Fernet(key).decrypt(token).decode()
-
-# Registration
-def register():
-    st.header("Register")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Register"):
-        if session.query(User).filter_by(username=username).first():
-            st.warning("Username exists.")
-        else:
-            password_hash = hash_password(password)
-            key = generate_key()
-            user = User(username=username, password_hash=password_hash, encryption_key=key)
-            session.add(user)
-            session.commit()
-            st.success("Registered successfully!")
-
-# Login
-def login():
-    st.header("Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        user = session.query(User).filter_by(username=username).first()
-        if user and verify_password(password, user.password_hash):
-            st.session_state["user_id"] = user.id
-            st.session_state["encryption_key"] = user.encryption_key
-            st.success("Logged in!")
-        else:
-            st.error("Invalid Credentials!")
-
-# Secure Data Storage
-def save_user_data(data, key, user_id):
-    encrypted = encrypt_data(data, key)
-    user_data = UserData(user_id=user_id, encrypted_data=encrypted)
-    session.add(user_data)
-    session.commit()
-
-# Retrieve Data
-def get_user_data(user_id, key):
-    data_record = session.query(UserData).filter_by(user_id=user_id).order_by(UserData.id.desc()).first()
-    if data_record:
-        return decrypt_data(data_record.encrypted_data, key)
-    return "No data found."
-
-# Main App Logic
-def main():
-    if "user_id" not in st.session_state:
-        choice = st.selectbox("Choose:", ["Login", "Register"])
-        if choice == "Register":
-            register()
-        elif choice == "Login":
-            login()
+# Load or create encryption key
+def load_or_create_key():
+    if os.path.exists(KEY_FILE):
+        with open(KEY_FILE, "rb") as f:
+            key = f.read()
     else:
-        user_id = st.session_state["user_id"]
-        key = st.session_state["encryption_key"]
-        st.title("Secure Data Dashboard")
-        data = st.text_area("Enter Data")
-        if st.button("Save Data"):
-            save_user_data(data, key, user_id)
-            st.success("Data encrypted and saved securely.")
-        retrieved = get_user_data(user_id, key)
-        st.subheader("Your Data")
-        st.write(retrieved)
+        key = Fernet.generate_key()
+        with open(KEY_FILE, "wb") as f:
+            f.write(key)
+    return key
 
-if __name__ == "__main__":
-    main()
+cipher = Fernet(load_or_create_key())
+
+# Load data from JSON
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+# Save data to JSON
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+# Hash passkey (per user)
+def hash_passkey(passkey, username):
+    combined = f"{username}:{passkey}"
+    return hashlib.sha256(combined.encode()).hexdigest()
+
+# Encrypt data
+def encrypt_data(text):
+    return cipher.encrypt(text.encode()).decode()
+
+# Decrypt data
+def decrypt_data(encrypted_text):
+    try:
+        return cipher.decrypt(encrypted_text.encode()).decode()
+    except Exception:
+        return None
+
+# ----------------- User Management -----------------
+
+def register_user(username, passkey):
+    data = load_data()
+    user_hash = hash_passkey(passkey, username)
+    if username in data:
+        return False
+    data[username] = {
+        "passkey_hash": user_hash,
+        "entries": {}  # Store encrypted data here
+    }
+    save_data(data)
+    return True
+
+def authenticate_user(username, passkey):
+    data = load_data()
+    if username not in data:
+        return False
+    user_hash = hash_passkey(passkey, username)
+    return user_hash == data[username]["passkey_hash"]
+
+# ----------------- Data Storage per User -----------------
+
+def store_user_data(username, data_text, passkey):
+    data = load_data()
+    user = data.get(username)
+    if not user:
+        return False
+    # Create a unique key for this data
+    encrypted_text = encrypt_data(data_text)
+    # Store encrypted data with a unique ID (e.g., timestamp)
+    entry_id = hashlib.sha256(encrypted_text.encode()).hexdigest()
+    user["entries"][entry_id] = encrypted_text
+    save_data(data)
+    return entry_id
+
+def retrieve_user_data(username, entry_id, passkey):
+    data = load_data()
+    user = data.get(username)
+    if not user:
+        return None
+    encrypted_text = user["entries"].get(entry_id)
+    if not encrypted_text:
+        return None
+    decrypted_text = decrypt_data(encrypted_text)
+    return decrypted_text
+
+# ----------------- Streamlit UI -----------------
+
+st.title("🔒 Advanced Secure Data System")
+
+# Session State
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+menu = ["Register", "Login", "Store Data", "Retrieve Data"]
+choice = st.sidebar.selectbox("Navigation", menu)
+
+if choice == "Register":
+    st.subheader("Register New User")
+    username = st.text_input("Username")
+    passkey = st.text_input("Create Password", type="password")
+    if st.button("Register"):
+        if username and passkey:
+            success = register_user(username, passkey)
+            if success:
+                st.success("Registration successful! Log in now.")
+            else:
+                st.error("Username already exists.")
+        else:
+            st.error("Please fill all fields.")
+
+elif choice == "Login":
+    st.subheader("Login")
+    username = st.text_input("Username")
+    passkey = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if authenticate_user(username, passkey):
+            st.session_state["user"] = username
+            st.success(f"Welcome, {username}!")
+        else:
+            st.error("Invalid credentials.")
+
+# Logged-in Actions
+if st.session_state["user"]:
+    user = st.session_state["user"]
+    st.sidebar.write(f"Logged in as: **{user}**")
+    
+    if choice == "Store Data":
+        st.subheader("🔐 Store Data")
+        data_input = st.text_area("Enter Data to Secure")
+        passkey_confirm = st.text_input("Enter your password to confirm", type="password")
+        if st.button("Encrypt & Save"):
+            if data_input and passkey_confirm:
+                if authenticate_user(user, passkey_confirm):
+                    entry_id = store_user_data(user, data_input, passkey_confirm)
+                    st.success(f"Data stored! Entry ID: {entry_id}")
+                else:
+                    st.error("Password confirmation failed.")
+            else:
+                st.error("All fields are required.")
+
+    elif choice == "Retrieve Data":
+        st.subheader("🔍 Retrieve Data")
+        entry_id_input = st.text_input("Enter Entry ID")
+        passkey_confirm = st.text_input("Enter your password to confirm", type="password")
+        if st.button("Retrieve Data"):
+            if entry_id_input and passkey_confirm:
+                if authenticate_user(user, passkey_confirm):
+                    data = retrieve_user_data(user, entry_id_input, passkey_confirm)
+                    if data:
+                        st.success(f"Retrieved Data: {data}")
+                    else:
+                        st.error("Invalid Entry ID or no such data.")
+                else:
+                    st.error("Password confirmation failed.")
+            else:
+                st.error("All fields are required.")
+
+    elif choice == "Logout":
+        st.session_state["user"] = None
+        st.sidebar.write("Logged out.")
+
+else:
+    st.info("Please log in or register to access data storage and retrieval.")
