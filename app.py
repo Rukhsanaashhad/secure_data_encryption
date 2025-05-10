@@ -191,4 +191,4 @@ if st.session_state["user"]:
             else:
                 st.error("All fields are required.")
 
-Developed and Created By [Muhammad Ashhad Khan](https://github.com/Rukhsanaashhad/secure_data_encryption)
+st.write ("Developed and Created By [Muhammad Ashhad Khan](https://github.com/Rukhsanaashhad/secure_data_encryption)")
