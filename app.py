@@ -124,23 +124,21 @@ if choice == "Register":
     st.subheader("Register New User")
     username = st.text_input("Username")
     passkey = st.text_input("Create Password", type="password")
-    # Show password strength feedback
+    strength = None
     if passkey:
         strength = check_password_strength(passkey)
         st.write(f"Password strength: **{strength}**")
     if st.button("Register"):
-        if username and passkey:
-            strength = check_password_strength(passkey)
-            if strength == "Weak":
-                st.error("Password is too weak. Please create a stronger password (at least 8 characters, including uppercase, lowercase, digit, and special character).")
-            else:
-                success = register_user(username, passkey)
-                if success:
-                    st.success("Registration successful! Log in now.")
-                else:
-                    st.error("Username already exists.")
-        else:
+        if not username or not passkey:
             st.error("Please fill all fields.")
+        elif strength == "Weak":
+            st.error("Password is too weak. Please create a stronger password (at least 8 characters, including uppercase, lowercase, digit, and special character).")
+        else:
+            success = register_user(username, passkey)
+            if success:
+                st.success("Registration successful! Log in now.")
+            else:
+                st.error("Username already exists.")
 
 # Login
 elif choice == "Login":
