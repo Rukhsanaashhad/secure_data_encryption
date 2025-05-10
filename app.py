@@ -190,3 +190,5 @@ if st.session_state["user"]:
                     st.error("Password confirmation failed.")
             else:
                 st.error("All fields are required.")
+
+Developed and Created By [Muhammad Ashhad Khan](https://github.com/Rukhsanaashhad/secure_data_encryption)
